@@ -1,7 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, StorageContext, load_index_from_storage
+from llama_index.core import (
+    VectorStoreIndex,
+    SimpleDirectoryReader,
+    Settings,
+    StorageContext,
+    load_index_from_storage,
+)
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import os
@@ -17,91 +23,75 @@ import time
 # =============================
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# =============================
+# Paths (works even if backend is a subfolder)
+# =============================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+KNOWLEDGE_DIR = os.path.join(BASE_DIR, "knowledge_base")
+PERSIST_DIR = os.path.join(BASE_DIR, "storage")
 
 # =============================
 # Load environment variables
 # =============================
 load_dotenv()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise RuntimeError("Missing GROQ_API_KEY in .env")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # On Render, set this in Environment Variables
 
 # =============================
-# Global Configuration (LlamaIndex Settings)
+# Globals
 # =============================
-try:
-    logger.info("Initializing LLM and embedding models...")
-    Settings.llm = Groq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
-    Settings.embed_model = HuggingFaceEmbedding(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-    Settings.chunk_size = 512
-    Settings.chunk_overlap = 50
-    logger.info("✅ Models initialized successfully")
-except Exception as e:
-    logger.error(f"❌ Error initializing models: {e}")
-    logger.error(traceback.format_exc())
-    raise
-
-# Global variable for the index
 vector_index: Optional[VectorStoreIndex] = None
+response_cache = {}  # Simple response cache
 
-# Simple response cache
-response_cache = {}
 
 # =============================
 # Knowledge base loader
 # =============================
-def load_knowledge_base():
-    """Load all .md and .txt files from ./knowledge_base"""
+def load_knowledge_base() -> bool:
+    """Load all .md and .txt files from knowledge_base/ and build/load an index."""
     global vector_index
     try:
-        PERSIST_DIR = "./storage"
-        
+        # Ensure storage dir exists (safe even if it already exists)
+        os.makedirs(PERSIST_DIR, exist_ok=True)
+
         # Try to load existing index
-        if os.path.exists(PERSIST_DIR):
+        if os.path.exists(PERSIST_DIR) and os.listdir(PERSIST_DIR):
             logger.info("📂 Loading existing index from storage...")
             storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
             vector_index = load_index_from_storage(storage_context)
             logger.info("✅ Index loaded from storage")
             return True
-        
+
         # Build new index if not exists
         logger.info("📚 Loading knowledge base...")
 
-        # Check if directory exists
-        if not os.path.exists("./knowledge_base"):
-            logger.error("❌ ./knowledge_base directory does not exist!")
+        if not os.path.exists(KNOWLEDGE_DIR):
+            logger.error(f"❌ knowledge_base directory does not exist: {KNOWLEDGE_DIR}")
             return False
 
-        # List files in directory
-        files = os.listdir("./knowledge_base")
+        files = os.listdir(KNOWLEDGE_DIR)
         logger.info(f"Files in knowledge_base: {files}")
 
         reader = SimpleDirectoryReader(
-            input_dir="./knowledge_base",
+            input_dir=KNOWLEDGE_DIR,
             required_exts=[".md", ".txt"],
-            recursive=False
+            recursive=False,
         )
         documents = reader.load_data()
 
         if not documents:
-            logger.warning("⚠️ No documents found in ./knowledge_base")
+            logger.warning("⚠️ No documents found in knowledge_base/")
             return False
 
         logger.info(f"📄 Found {len(documents)} document(s)")
-        
-        # Indexing now uses the global Settings automatically
         logger.info("Building vector index...")
         vector_index = VectorStoreIndex.from_documents(documents)
-        
-        # Persist the index
+
         vector_index.storage_context.persist(persist_dir=PERSIST_DIR)
-        logger.info("✅ Knowledge base built and saved to storage!")
+        logger.info(f"✅ Knowledge base built and saved to: {PERSIST_DIR}")
         return True
 
     except Exception as e:
@@ -109,24 +99,53 @@ def load_knowledge_base():
         logger.error(traceback.format_exc())
         return False
 
+
 # =============================
-# FastAPI lifespan
+# FastAPI lifespan (do heavy work here, not at import time)
 # =============================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events"""
-    logger.info("\n" + "="*50)
+    global vector_index
+
+    logger.info("\n" + "=" * 50)
     logger.info("🚀 RAG Backend Starting")
-    logger.info("="*50)
+    logger.info("=" * 50)
 
-    load_knowledge_base()
+    # 1) Init models (can be slow) — keep out of top-level import
+    try:
+        if not GROQ_API_KEY:
+            logger.warning("⚠️ Missing GROQ_API_KEY (service will run, but /ask will fail)")
+        else:
+            logger.info("Initializing LLM and embedding models...")
+            Settings.llm = Groq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
+            Settings.embed_model = HuggingFaceEmbedding(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
+            Settings.chunk_size = 512
+            Settings.chunk_overlap = 50
+            logger.info("✅ Models initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Error initializing models: {e}")
+        logger.error(traceback.format_exc())
 
-    logger.info("="*50)
-    logger.info("✅ Ready: http://127.0.0.1:8000")
-    logger.info("="*50 + "\n")
+    # 2) Load or build the knowledge base index
+    try:
+        ok = load_knowledge_base()
+        if ok:
+            logger.info("✅ Knowledge base ready")
+        else:
+            logger.warning("⚠️ Knowledge base not loaded (check folder + files)")
+    except Exception as e:
+        logger.error(f"❌ KB init failed: {e}")
+        logger.error(traceback.format_exc())
+
+    logger.info("=" * 50)
+    logger.info("✅ Service started (Render uses $PORT, not 8000)")
+    logger.info("=" * 50 + "\n")
 
     yield
     logger.info("👋 Shutting down...")
+
 
 # =============================
 # Create FastAPI app
@@ -146,16 +165,19 @@ app.add_middleware(
 class AskRequest(BaseModel):
     question: str
 
+
 class Source(BaseModel):
     text: str
     document: str
     score: Optional[float]
+
 
 class AskResponse(BaseModel):
     question: str
     answer: str
     sources: List[Source]
     processing_time: Optional[float] = None
+
 
 # =============================
 # Endpoints
@@ -165,76 +187,77 @@ def root():
     return {
         "status": "online",
         "knowledge_base": "✅ Loaded" if vector_index else "❌ Not loaded",
-        "endpoints": ["/ask", "/health", "/reload"]
+        "paths": {
+            "knowledge_dir": KNOWLEDGE_DIR,
+            "storage_dir": PERSIST_DIR,
+        },
+        "endpoints": ["/ask", "/health", "/reload"],
     }
+
 
 @app.get("/health")
 def health():
+    llm_model = getattr(getattr(Settings, "llm", None), "model", None)
     return {
         "groq_api_key": "✅" if GROQ_API_KEY else "❌",
         "knowledge_base": "✅" if vector_index else "❌",
-        "llm": Settings.llm.model if Settings.llm else "Not set",
+        "llm": llm_model if llm_model else "Not set",
         "embed_model": "HuggingFace MiniLM" if Settings.embed_model else "Not set",
-        "cached_responses": len(response_cache)
+        "cached_responses": len(response_cache),
     }
+
 
 @app.post("/ask", response_model=AskResponse)
 def ask_question(request: AskRequest):
     start_time = time.time()
-    logger.info(f"Received question: {request.question}")
-    
+    question = request.question.strip()
+
+    logger.info(f"Received question: {question!r}")
+
+    if not question:
+        raise HTTPException(400, "Question is empty")
+
+    if not GROQ_API_KEY or not Settings.llm:
+        raise HTTPException(503, "GROQ_API_KEY missing or LLM not initialized")
+
     if not vector_index:
-        logger.error("Knowledge base not loaded")
         raise HTTPException(503, "Knowledge base not loaded")
 
-    question = request.question.strip()
-    if not question:
-        logger.error("Empty question received")
-        raise HTTPException(400, "Question is empty")
-    
-    # Check cache first
+    # Cache check
     if question in response_cache:
-        logger.info("📦 Returning cached response")
-        cached_response = response_cache[question]
-        # Update processing time to show it was cached
-        cached_response.processing_time = round(time.time() - start_time, 2)
-        return cached_response
+        cached = response_cache[question]
+        return cached.model_copy(
+            update={"processing_time": round(time.time() - start_time, 2)}
+        )
 
     try:
-        # Query engine uses the global Settings by default
         logger.info("Creating query engine...")
         query_engine = vector_index.as_query_engine(similarity_top_k=3)
-        
+
         logger.info("Querying knowledge base...")
         response = query_engine.query(question)
-        logger.info(f"Query completed. Response type: {type(response)}")
 
-        sources = []
-        if hasattr(response, "source_nodes"):
-            logger.info(f"Found {len(response.source_nodes)} source nodes")
+        sources: List[Source] = []
+        if hasattr(response, "source_nodes") and response.source_nodes:
             for node in response.source_nodes:
-                sources.append(Source(
-                    text=node.node.get_content()[:200] + "...",
-                    document=node.node.metadata.get("file_name", "unknown"),
-                    score=round(float(node.score), 3) if node.score else None
-                ))
-
-        answer_text = str(response)
-        logger.info(f"Answer length: {len(answer_text)} characters")
-        
-        processing_time = round(time.time() - start_time, 2)
+                sources.append(
+                    Source(
+                        text=node.node.get_content()[:200] + "...",
+                        document=node.node.metadata.get("file_name", "unknown"),
+                        score=round(float(node.score), 3) if node.score else None,
+                    )
+                )
 
         result = AskResponse(
             question=question,
-            answer=answer_text,
+            answer=str(response),
             sources=sources,
-            processing_time=processing_time
+            processing_time=round(time.time() - start_time, 2),
         )
-        
-        # Cache the response (limit to 50 entries)
+
+        # Cache up to 50 entries
         if len(response_cache) < 50:
             response_cache[question] = result
-            logger.info(f"💾 Response cached ({len(response_cache)}/50)")
 
         return result
 
@@ -243,15 +266,18 @@ def ask_question(request: AskRequest):
         logger.error(traceback.format_exc())
         raise HTTPException(500, f"Error querying KB: {str(e)}")
 
+
 @app.post("/reload")
 def reload():
-    logger.info("Reload requested")
     global response_cache
-    response_cache = {}  # Clear cache on reload
+    response_cache = {}
     if load_knowledge_base():
         return {"message": "Reloaded successfully", "cache_cleared": True}
     raise HTTPException(500, "Reload failed")
 
+
 if __name__ == "__main__":
     import uvicorn
+
+    # Local only. On Render/Koyeb use the Start Command.
     uvicorn.run(app, host="0.0.0.0", port=8000)
