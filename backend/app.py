@@ -1,0 +1,257 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, StorageContext, load_index_from_storage
+from llama_index.llms.groq import Groq
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+import os
+from dotenv import load_dotenv
+from typing import Optional, List
+from contextlib import asynccontextmanager
+import traceback
+import logging
+import time
+
+# =============================
+# Setup logging
+# =============================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# =============================
+# Load environment variables
+# =============================
+load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise RuntimeError("Missing GROQ_API_KEY in .env")
+
+# =============================
+# Global Configuration (LlamaIndex Settings)
+# =============================
+try:
+    logger.info("Initializing LLM and embedding models...")
+    Settings.llm = Groq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
+    Settings.embed_model = HuggingFaceEmbedding(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
+    Settings.chunk_size = 512
+    Settings.chunk_overlap = 50
+    logger.info("✅ Models initialized successfully")
+except Exception as e:
+    logger.error(f"❌ Error initializing models: {e}")
+    logger.error(traceback.format_exc())
+    raise
+
+# Global variable for the index
+vector_index: Optional[VectorStoreIndex] = None
+
+# Simple response cache
+response_cache = {}
+
+# =============================
+# Knowledge base loader
+# =============================
+def load_knowledge_base():
+    """Load all .md and .txt files from ./knowledge_base"""
+    global vector_index
+    try:
+        PERSIST_DIR = "./storage"
+        
+        # Try to load existing index
+        if os.path.exists(PERSIST_DIR):
+            logger.info("📂 Loading existing index from storage...")
+            storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
+            vector_index = load_index_from_storage(storage_context)
+            logger.info("✅ Index loaded from storage")
+            return True
+        
+        # Build new index if not exists
+        logger.info("📚 Loading knowledge base...")
+
+        # Check if directory exists
+        if not os.path.exists("./knowledge_base"):
+            logger.error("❌ ./knowledge_base directory does not exist!")
+            return False
+
+        # List files in directory
+        files = os.listdir("./knowledge_base")
+        logger.info(f"Files in knowledge_base: {files}")
+
+        reader = SimpleDirectoryReader(
+            input_dir="./knowledge_base",
+            required_exts=[".md", ".txt"],
+            recursive=False
+        )
+        documents = reader.load_data()
+
+        if not documents:
+            logger.warning("⚠️ No documents found in ./knowledge_base")
+            return False
+
+        logger.info(f"📄 Found {len(documents)} document(s)")
+        
+        # Indexing now uses the global Settings automatically
+        logger.info("Building vector index...")
+        vector_index = VectorStoreIndex.from_documents(documents)
+        
+        # Persist the index
+        vector_index.storage_context.persist(persist_dir=PERSIST_DIR)
+        logger.info("✅ Knowledge base built and saved to storage!")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error loading KB: {e}")
+        logger.error(traceback.format_exc())
+        return False
+
+# =============================
+# FastAPI lifespan
+# =============================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events"""
+    logger.info("\n" + "="*50)
+    logger.info("🚀 RAG Backend Starting")
+    logger.info("="*50)
+
+    load_knowledge_base()
+
+    logger.info("="*50)
+    logger.info("✅ Ready: http://127.0.0.1:8000")
+    logger.info("="*50 + "\n")
+
+    yield
+    logger.info("👋 Shutting down...")
+
+# =============================
+# Create FastAPI app
+# =============================
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =============================
+# Pydantic models
+# =============================
+class AskRequest(BaseModel):
+    question: str
+
+class Source(BaseModel):
+    text: str
+    document: str
+    score: Optional[float]
+
+class AskResponse(BaseModel):
+    question: str
+    answer: str
+    sources: List[Source]
+    processing_time: Optional[float] = None
+
+# =============================
+# Endpoints
+# =============================
+@app.get("/")
+def root():
+    return {
+        "status": "online",
+        "knowledge_base": "✅ Loaded" if vector_index else "❌ Not loaded",
+        "endpoints": ["/ask", "/health", "/reload"]
+    }
+
+@app.get("/health")
+def health():
+    return {
+        "groq_api_key": "✅" if GROQ_API_KEY else "❌",
+        "knowledge_base": "✅" if vector_index else "❌",
+        "llm": Settings.llm.model if Settings.llm else "Not set",
+        "embed_model": "HuggingFace MiniLM" if Settings.embed_model else "Not set",
+        "cached_responses": len(response_cache)
+    }
+
+@app.post("/ask", response_model=AskResponse)
+def ask_question(request: AskRequest):
+    start_time = time.time()
+    logger.info(f"Received question: {request.question}")
+    
+    if not vector_index:
+        logger.error("Knowledge base not loaded")
+        raise HTTPException(503, "Knowledge base not loaded")
+
+    question = request.question.strip()
+    if not question:
+        logger.error("Empty question received")
+        raise HTTPException(400, "Question is empty")
+    
+    # Check cache first
+    if question in response_cache:
+        logger.info("📦 Returning cached response")
+        cached_response = response_cache[question]
+        # Update processing time to show it was cached
+        cached_response.processing_time = round(time.time() - start_time, 2)
+        return cached_response
+
+    try:
+        # Query engine uses the global Settings by default
+        logger.info("Creating query engine...")
+        query_engine = vector_index.as_query_engine(similarity_top_k=3)
+        
+        logger.info("Querying knowledge base...")
+        response = query_engine.query(question)
+        logger.info(f"Query completed. Response type: {type(response)}")
+
+        sources = []
+        if hasattr(response, "source_nodes"):
+            logger.info(f"Found {len(response.source_nodes)} source nodes")
+            for node in response.source_nodes:
+                sources.append(Source(
+                    text=node.node.get_content()[:200] + "...",
+                    document=node.node.metadata.get("file_name", "unknown"),
+                    score=round(float(node.score), 3) if node.score else None
+                ))
+
+        answer_text = str(response)
+        logger.info(f"Answer length: {len(answer_text)} characters")
+        
+        processing_time = round(time.time() - start_time, 2)
+
+        result = AskResponse(
+            question=question,
+            answer=answer_text,
+            sources=sources,
+            processing_time=processing_time
+        )
+        
+        # Cache the response (limit to 50 entries)
+        if len(response_cache) < 50:
+            response_cache[question] = result
+            logger.info(f"💾 Response cached ({len(response_cache)}/50)")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Error during query: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, f"Error querying KB: {str(e)}")
+
+@app.post("/reload")
+def reload():
+    logger.info("Reload requested")
+    global response_cache
+    response_cache = {}  # Clear cache on reload
+    if load_knowledge_base():
+        return {"message": "Reloaded successfully", "cache_cleared": True}
+    raise HTTPException(500, "Reload failed")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
