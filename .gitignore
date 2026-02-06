@@ -1,0 +1,74 @@
+# Python (Backend & Bot)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+venv311/
+
+# FastAPI/Python specific
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Environment variables
+.env
+.env.local
+.env*.local
+*.env
+
+# Node.js (Frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# React/Vite build outputs
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Discord bot token (IMPORTANT!)
+config.json
+token.txt
+bot_token.txt
+
+# Database files (if you add one later)
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+# Design assets
+discord-bot/readmeLine.png
