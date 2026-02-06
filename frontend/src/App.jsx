@@ -595,7 +595,7 @@ function App() {
               onSubmit={handleSubmit}
             >
               {loading && (
-                <p className="absolute top-[-100%] animate-pulse">
+                <p className="absolute top-[-100%] animate-pulse text-caption">
                   {" "}
                   Thinking ...
                 </p>
