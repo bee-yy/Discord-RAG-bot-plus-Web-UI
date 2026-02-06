@@ -70,5 +70,3 @@ bot_token.txt
 # Temporary files
 *.tmp
 *.temp
-# Design assets
-discord-bot/readmeLine.png

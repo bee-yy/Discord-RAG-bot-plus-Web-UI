@@ -1,21 +1,21 @@
 # Project RAG Bot
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Overview
 A Retrieval-Augmented Generation (RAG) assistant with a FastAPI backend, a Discord bot interface, and a React/Tailwind web UI. The backend indexes local knowledge base files and answers questions via Groq-hosted Llama 3.3 with HuggingFace embeddings. The Discord bot forwards user questions to the backend and returns rich responses with sources and feedback buttons.
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## User Flow
 <img src="frontend/src/assets/User%20Flow_%20discord-bot.jpg" alt="User Flow" width="100%" />
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Final Design
 <img src="frontend/src/assets/final%20design.jpg" alt="Final Design" width="100%" />
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Architecture
 - `backend/`: FastAPI RAG API with LlamaIndex, Groq LLM, and vector storage.
@@ -25,14 +25,14 @@ A Retrieval-Augmented Generation (RAG) assistant with a FastAPI backend, a Disco
 
 
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Tech Stack
 - Backend: FastAPI, LlamaIndex, Groq, HuggingFace Embeddings
 - Bot: discord.py, aiohttp
 - Frontend: React, Vite, Tailwind CSS
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Getting Started
 
@@ -76,7 +76,7 @@ npm install
 npm run dev
 ```
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Project Structure
 ```
@@ -95,7 +95,7 @@ frontend/
   package.json
 ```
 
-<img src="discord-bot/readmeLine.png" alt="divider" width="100%" />
+<img src="readmeLine.png" alt="divider" width="100%" />
 
 ## Notes
 - Add or update files in `backend/knowledge_base` to expand the assistant's knowledge.
