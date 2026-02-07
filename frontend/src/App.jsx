@@ -1,15 +1,18 @@
 // App.jsx
 import { useState } from "react";
-import ErrorImg from "./assets/404-error.png";
+import ErrorImg from "./assets/error-img.png";
 function App() {
-  // 
-  const [reply, setReply] = useState("");
+  //
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([]);
   const [displayIntroState, setDisplayintroState] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState({
+    code: "",
+    message: "",
+  });
   const [buttonColorChange, setButtonColorChange] = useState(false);
 
   // Buttons
@@ -59,9 +62,9 @@ function App() {
         <path
           d="M8.03867 16L7.06759 8.75066C6.78945 6.676 9.36507 5.15199 11.64 6.04666L30.8431 13.5907C33.2949 14.5533 33.2949 17.4467 30.8431 18.4093L11.64 25.9547C9.36507 26.848 6.78945 25.3253 7.06759 23.2507L8.03867 16ZM8.03867 16H19.293"
           stroke="url(#paint2_linear_38_90)"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <defs>
           <linearGradient
@@ -72,8 +75,8 @@ function App() {
             y2="16.0004"
             gradientUnits="userSpaceOnUse"
           >
-            <stop stop-color="#FFC403" />
-            <stop offset="1" stop-color="#DD2D01" />
+            <stop stopColor="#FFC403" />
+            <stop offset="1" stopColor="#DD2D01" />
           </linearGradient>
           <linearGradient
             id="paint1_linear_38_90"
@@ -83,8 +86,8 @@ function App() {
             y2="16.0004"
             gradientUnits="userSpaceOnUse"
           >
-            <stop stop-color="#DD2D01" />
-            <stop offset="1" stop-color="#FFC403" />
+            <stop stopColor="#DD2D01" />
+            <stop offset="1" stopColor="#FFC403" />
           </linearGradient>
           <linearGradient
             id="paint2_linear_38_90"
@@ -94,19 +97,18 @@ function App() {
             y2="16.0004"
             gradientUnits="userSpaceOnUse"
           >
-            <stop stop-color="#FFC403" />
-            <stop offset="1" stop-color="#DD2D01" />
+            <stop stopColor="#FFC403" />
+            <stop offset="1" stopColor="#DD2D01" />
           </linearGradient>
         </defs>
       </svg>
     </span>
   );
 
-  // API 
+  // API
   const API_BASE =
-  // import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+    // import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
     import.meta.env.VITE_BACKEND_URL;
-
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -116,8 +118,6 @@ function App() {
     //clear input
     setQuery("");
 
-    //remove display intro text
-    setDisplayintroState(false);
     try {
       console.log("loading..");
       setLoading(true);
@@ -130,10 +130,20 @@ function App() {
         body: JSON.stringify({ question: userQuestion }),
       });
 
+      //remove display intro text
+      setDisplayintroState(false);
       const data = await response.json();
-      console.log(data);
+      if (!response.ok) {
+        setError(true);
+        setErrorMessage({
+          code: response.status,
+          message: response.statusText || data.detail || "Please retry",
+        });
+        console.log(data);
+        return;
+      }
       // set reply
-      setReply(data);
+      // setReply(data);
 
       //set history
       setHistory((prevHistory) => {
@@ -141,6 +151,10 @@ function App() {
       });
     } catch (error) {
       setError(true);
+      setErrorMessage({
+        code: "Network",
+        message: "please reload",
+      });
       console.error("Error:", error.message);
     } finally {
       setLoading(false);
@@ -149,15 +163,34 @@ function App() {
 
   async function handleReload() {
     try {
-      console.log("loading..");
+      console.log("Retrying..");
       setLoading(true);
       const response = await fetch(`${API_BASE}/reload`, {
         method: "POST",
       });
       const data = await response.json();
-      console.log(data);
+      if (!response.ok) {
+        setError(true);
+        if (response.status == 503) {
+          setErrorMessage({
+            code: response.status,
+            message: "Wakig up Server",
+          });
+          return;
+        }
+        setErrorMessage({
+          code: response.status,
+          message: response.statusText || data.detail || "Please retry",
+        });
+        console.log(data);
+        return;
+      }
     } catch (error) {
       setError(true);
+      setErrorMessage({
+        code: "Network",
+        message: "please reload",
+      });
       console.error("Error:", error.message);
     } finally {
       setLoading(false);
@@ -168,7 +201,13 @@ function App() {
       {error && (
         <div className="h-dvh z-50  w-[90%] right-0 absolute flex flex-col justify-center items-center bg-black error">
           <div className="img-wrapper p-(--space-md) ">
+            <p className="text-red  text-9xl text-center">
+              {errorMessage.code}
+            </p>
             <img src={ErrorImg} alt="404 error photo" />
+            <p className="text-white-secondary text-center">
+              {errorMessage.message}
+            </p>
           </div>
           <button
             onClick={handleReload}

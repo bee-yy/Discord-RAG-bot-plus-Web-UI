@@ -279,6 +279,7 @@
     border-top: 2px solid transparent;
     background:
       linear-gradient(to right, var(--color-black),  var(--color-black) ) padding-box,
-      linear-gradient(to right, var(--color-yellow), var(--color-red)) border-box;
+      linear-gradient(to right, rgb(from var(--color-yellow) r g b/40%),
+                                rgb(from var(--color-red) r g b/40%)) border-box;
   }
 }
