@@ -2,6 +2,7 @@
 import { useState } from "react";
 import ErrorImg from "./assets/404-error.png";
 function App() {
+  // 
   const [reply, setReply] = useState("");
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([]);
@@ -101,6 +102,12 @@ function App() {
     </span>
   );
 
+  // API 
+  const API_BASE =
+  // import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+    import.meta.env.VITE_BACKEND_URL;
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -115,7 +122,7 @@ function App() {
       console.log("loading..");
       setLoading(true);
       setButtonColorChange(true);
-      const response = await fetch("http://localhost:8000/ask", {
+      const response = await fetch(`${API_BASE}/ask`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -144,7 +151,7 @@ function App() {
     try {
       console.log("loading..");
       setLoading(true);
-      const response = await fetch("http://localhost:8000/reload", {
+      const response = await fetch(`${API_BASE}/reload`, {
         method: "POST",
       });
       const data = await response.json();
@@ -529,7 +536,7 @@ function App() {
                       {item.answer}
                     </p>
 
-                    {item.sources.map((source, sourceIndex) => {
+                    {(item.sources || []).map((source, sourceIndex) => {
                       return (
                         <p
                           className="text-secondary opacity-70 italic underline text-left text-caption mb-(--space-xs)"
@@ -595,7 +602,7 @@ function App() {
               onSubmit={handleSubmit}
             >
               {loading && (
-                <p className="absolute top-[-100%] animate-pulse text-caption">
+                <p className="absolute bottom-full animate-pulse text-caption mb-(--space-lg)">
                   {" "}
                   Thinking ...
                 </p>

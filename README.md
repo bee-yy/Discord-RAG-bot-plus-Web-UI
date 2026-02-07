@@ -36,6 +36,16 @@ A Retrieval-Augmented Generation (RAG) assistant with a FastAPI backend, a Disco
 
 ## Getting Started
 
+### Before You Start (Important)
+On cloning this repo, the most common issues are:
+- Wrong Python version (this project expects Python 3.11+).
+- Missing environment variables (`GROQ_API_KEY`, `DISCORD_TOKEN`, `BACKEND_URL`).
+
+Quick setup checklist:
+1. Install Python 3.11+
+2. Create a virtual environment per folder (`backend/` and `discord-bot/`)
+3. Add the required `.env` files (see below)
+
 ### 1) Backend
 ```bash
 cd backend
