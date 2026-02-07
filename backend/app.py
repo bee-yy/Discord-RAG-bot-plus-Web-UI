@@ -9,7 +9,7 @@ from llama_index.core import (
     load_index_from_storage,
 )
 from llama_index.llms.groq import Groq
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.embeddings.fastembed import FastEmbedEmbedding  # ✅ Render-friendly
 import os
 from dotenv import load_dotenv
 from typing import Optional, List
@@ -28,17 +28,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =============================
-# Paths (works even if backend is a subfolder)
+# Paths
 # =============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-KNOWLEDGE_DIR = os.path.join(BASE_DIR, "knowledge_base")
-PERSIST_DIR = os.path.join(BASE_DIR, "storage")
+
+# You can override these on Render via env vars if needed
+KNOWLEDGE_DIR = os.getenv("KNOWLEDGE_DIR", os.path.join(BASE_DIR, "knowledge_base"))
+
+# ✅ Render-safe writable default. Use a Render Disk later and set PERSIST_DIR=/var/data/storage
+PERSIST_DIR = os.getenv("PERSIST_DIR", "/tmp/storage")
 
 # =============================
 # Load environment variables
 # =============================
 load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # On Render, set this in Environment Variables
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # =============================
 # Globals
@@ -47,14 +51,10 @@ vector_index: Optional[VectorStoreIndex] = None
 response_cache = {}  # Simple response cache
 
 
-# =============================
-# Knowledge base loader
-# =============================
 def load_knowledge_base() -> bool:
     """Load all .md and .txt files from knowledge_base/ and build/load an index."""
     global vector_index
     try:
-        # Ensure storage dir exists (safe even if it already exists)
         os.makedirs(PERSIST_DIR, exist_ok=True)
 
         # Try to load existing index
@@ -71,9 +71,6 @@ def load_knowledge_base() -> bool:
         if not os.path.exists(KNOWLEDGE_DIR):
             logger.error(f"❌ knowledge_base directory does not exist: {KNOWLEDGE_DIR}")
             return False
-
-        files = os.listdir(KNOWLEDGE_DIR)
-        logger.info(f"Files in knowledge_base: {files}")
 
         reader = SimpleDirectoryReader(
             input_dir=KNOWLEDGE_DIR,
@@ -100,9 +97,6 @@ def load_knowledge_base() -> bool:
         return False
 
 
-# =============================
-# FastAPI lifespan (do heavy work here, not at import time)
-# =============================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global vector_index
@@ -111,16 +105,18 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 RAG Backend Starting")
     logger.info("=" * 50)
 
-    # 1) Init models (can be slow) — keep out of top-level import
+    # Init models (keep out of top-level import)
     try:
         if not GROQ_API_KEY:
             logger.warning("⚠️ Missing GROQ_API_KEY (service will run, but /ask will fail)")
         else:
             logger.info("Initializing LLM and embedding models...")
+
             Settings.llm = Groq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
-            Settings.embed_model = HuggingFaceEmbedding(
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
-            )
+
+            # ✅ CPU embeddings, no torch/transformers
+            Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
+
             Settings.chunk_size = 512
             Settings.chunk_overlap = 50
             logger.info("✅ Models initialized successfully")
@@ -128,7 +124,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Error initializing models: {e}")
         logger.error(traceback.format_exc())
 
-    # 2) Load or build the knowledge base index
+    # Load/build KB
     try:
         ok = load_knowledge_base()
         if ok:
@@ -140,37 +136,33 @@ async def lifespan(app: FastAPI):
         logger.error(traceback.format_exc())
 
     logger.info("=" * 50)
-    logger.info("✅ Service started (Render uses $PORT, not 8000)")
+    logger.info("✅ Service started (Render uses $PORT)")
     logger.info("=" * 50 + "\n")
 
     yield
     logger.info("👋 Shutting down...")
 
 
-# =============================
-# Create FastAPI app
-# =============================
 app = FastAPI(lifespan=lifespan)
+
+# CORS (defaults to *). You can set CORS_ORIGINS="https://a.com,https://b.com"
+cors_origins = os.getenv("CORS_ORIGINS", "*").strip()
+allow_origins = ["*"] if cors_origins == "*" else [o.strip() for o in cors_origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# =============================
-# Pydantic models
-# =============================
 class AskRequest(BaseModel):
     question: str
-
 
 class Source(BaseModel):
     text: str
     document: str
     score: Optional[float]
-
 
 class AskResponse(BaseModel):
     question: str
@@ -179,21 +171,14 @@ class AskResponse(BaseModel):
     processing_time: Optional[float] = None
 
 
-# =============================
-# Endpoints
-# =============================
 @app.get("/")
 def root():
     return {
         "status": "online",
         "knowledge_base": "✅ Loaded" if vector_index else "❌ Not loaded",
-        "paths": {
-            "knowledge_dir": KNOWLEDGE_DIR,
-            "storage_dir": PERSIST_DIR,
-        },
+        "paths": {"knowledge_dir": KNOWLEDGE_DIR, "storage_dir": PERSIST_DIR},
         "endpoints": ["/ask", "/health", "/reload"],
     }
-
 
 @app.get("/health")
 def health():
@@ -202,10 +187,9 @@ def health():
         "groq_api_key": "✅" if GROQ_API_KEY else "❌",
         "knowledge_base": "✅" if vector_index else "❌",
         "llm": llm_model if llm_model else "Not set",
-        "embed_model": "HuggingFace MiniLM" if Settings.embed_model else "Not set",
+        "embed_model": type(Settings.embed_model).__name__ if Settings.embed_model else "Not set",
         "cached_responses": len(response_cache),
     }
-
 
 @app.post("/ask", response_model=AskResponse)
 def ask_question(request: AskRequest):
@@ -226,19 +210,14 @@ def ask_question(request: AskRequest):
     # Cache check
     if question in response_cache:
         cached = response_cache[question]
-        return cached.model_copy(
-            update={"processing_time": round(time.time() - start_time, 2)}
-        )
+        return cached.model_copy(update={"processing_time": round(time.time() - start_time, 2)})
 
     try:
-        logger.info("Creating query engine...")
         query_engine = vector_index.as_query_engine(similarity_top_k=3)
-
-        logger.info("Querying knowledge base...")
         response = query_engine.query(question)
 
         sources: List[Source] = []
-        if hasattr(response, "source_nodes") and response.source_nodes:
+        if getattr(response, "source_nodes", None):
             for node in response.source_nodes:
                 sources.append(
                     Source(
@@ -278,6 +257,4 @@ def reload():
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Local only. On Render/Koyeb use the Start Command.
     uvicorn.run(app, host="0.0.0.0", port=8000)
