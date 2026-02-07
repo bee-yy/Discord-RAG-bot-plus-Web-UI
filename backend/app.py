@@ -14,6 +14,7 @@ import os
 from dotenv import load_dotenv
 from typing import Optional, List
 from contextlib import asynccontextmanager
+import threading
 import traceback
 import logging
 import time
@@ -124,16 +125,19 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Error initializing models: {e}")
         logger.error(traceback.format_exc())
 
-    # Load/build KB
-    try:
-        ok = load_knowledge_base()
-        if ok:
-            logger.info("✅ Knowledge base ready")
-        else:
-            logger.warning("⚠️ Knowledge base not loaded (check folder + files)")
-    except Exception as e:
-        logger.error(f"❌ KB init failed: {e}")
-        logger.error(traceback.format_exc())
+    # Load/build KB in background to avoid blocking startup (Render port scan)
+    def _load_kb_background():
+        try:
+            ok = load_knowledge_base()
+            if ok:
+                logger.info("✅ Knowledge base ready")
+            else:
+                logger.warning("⚠️ Knowledge base not loaded (check folder + files)")
+        except Exception as e:
+            logger.error(f"❌ KB init failed: {e}")
+            logger.error(traceback.format_exc())
+
+    threading.Thread(target=_load_kb_background, daemon=True).start()
 
     logger.info("=" * 50)
     logger.info("✅ Service started (Render uses $PORT)")
