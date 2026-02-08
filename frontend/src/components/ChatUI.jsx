@@ -6,8 +6,6 @@ function cleanAnswer(answer) {
 }
 
 
-
-
 function ChatUI(props) {
   return (
     <div className="overflow-y-auto w-full text-white-secondary ">
@@ -20,9 +18,12 @@ function ChatUI(props) {
               {" "}
               {item.question}
             </h4>
-            <div className="gradient-border-top-box py-(--space-lg)  text-left ">
-              {" "}
-              {item.answer}
+            <div 
+            className="gradient-border-top-box py-(--space-lg)  text-left whitespace-pre-wrap "
+            >
+      
+            {/* { FormattedAnswer( item.answer )} */}
+            {item.answer}
             </div>
 
             {/* {(item.sources || []).map((source, sourceIndex) => {

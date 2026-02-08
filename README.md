@@ -5,6 +5,9 @@
 ## Overview
 A Retrieval-Augmented Generation (RAG) assistant with a FastAPI backend, a Discord bot interface, and a React/Tailwind web UI. The backend indexes local knowledge base files and answers questions via Groq-hosted Llama 3.3 with HuggingFace embeddings. The Discord bot forwards user questions to the backend and returns rich responses with sources and feedback buttons.
 
+## Live Demo
+Web UI: https://discord-rag-bot-plus-web-ui.vercel.app
+
 <img src="readmeLine.png" alt="divider" width="100%" />
 
 ## User Flow
