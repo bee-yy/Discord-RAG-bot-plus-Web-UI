@@ -18,13 +18,8 @@ function App() {
   });
   const [buttonColorChange, setButtonColorChange] = useState(false);
 
-  
-
   // API
-  const API_BASE =
-    // import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
-    import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
-    //import.meta.env.VITE_BACKEND_URL;
+  const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,8 +54,7 @@ function App() {
         return;
       }
       // set reply
-      // setReply(data);
-      console.log(data)
+      console.log(data);
       //set history
       setHistory((prevHistory) => {
         return [...prevHistory, data];
@@ -114,20 +108,19 @@ function App() {
     }
   }
 
-  async function handleRetry(){
-    window.location.reload()
+  async function handleRetry() {
+    window.location.reload();
   }
   return (
     <>
-    
       {error && (
         <ErrorScreen onReload={handleRetry} errorDescription={errorMessage} />
       )}
 
       <main className=" bg-black page-pad-x  text-white-primary flex flex-row h-full gap-0 text-center">
         {/*Left hand Side*/}
-        
-        <SideBar/>
+
+        <SideBar />
         {/*Right hand Side*/}
         <div className=" w-full flex flex-col justify-center items-center ">
           <div className=" flex flex-col w-[90%] md:w-[75%] h-[80%] justify-end items-center">
@@ -144,22 +137,20 @@ function App() {
             )}
 
             {/* Display responses */}
-           <ChatUI history={history} onReload={handleReload}/>
+            <ChatUI history={history} onReload={handleReload} />
 
             {/* form */}
             <Form
-             
-             onSubmit ={handleSubmit} 
-             loadingState ={loading}
-             buttonChangeState = {buttonColorChange}
-             query ={query} setQuery ={setQuery}
-             history = {history}/>
-           
+              onSubmit={handleSubmit}
+              loadingState={loading}
+              buttonChangeState={buttonColorChange}
+              query={query}
+              setQuery={setQuery}
+              history={history}
+            />
           </div>
         </div>
       </main>
-
-      
     </>
   );
 }

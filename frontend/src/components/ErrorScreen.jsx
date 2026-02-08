@@ -12,9 +12,7 @@ return(<>
               {props.errorDescription.code} Error </p>
               <p className="text-white-primary"><span className="text-4xl" >W</span>hoops Something went wrong</p>
              
-            {/* <img src={ErrorImg} alt="404 error photo" /> */}
             <p className="text-white-secondary text-center">
-              {/* {props.errorDescription.message} */}
             </p>
           </div>
           <button

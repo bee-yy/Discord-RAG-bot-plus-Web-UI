@@ -1,10 +1,4 @@
 import Tooltip from "@mui/material/Tooltip";
-function cleanAnswer(answer) {
-  return typeof answer === "string"
-    ? answer.trim().replace(/\r\n/g, "\n")
-    : "";
-}
-
 
 function ChatUI(props) {
   return (
@@ -22,20 +16,8 @@ function ChatUI(props) {
             className="gradient-border-top-box py-(--space-lg)  text-left whitespace-pre-wrap "
             >
       
-            {/* { FormattedAnswer( item.answer )} */}
             {item.answer}
             </div>
-
-            {/* {(item.sources || []).map((source, sourceIndex) => {
-                      return (
-                        <p
-                          className="text-secondary opacity-70 italic underline text-left text-caption mb-(--space-xs)"
-                          key={sourceIndex}
-                        >
-                          {source.document}{" "}
-                        </p>
-                      );
-                    })} */}
 
             <div className=" flex justify-between items-center opacity-70">
               <div className="text-secondary opacity-70 italic underline text-left text-body mb-(--space-xs) cursor-pointer">
